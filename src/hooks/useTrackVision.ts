@@ -22,6 +22,11 @@ import {
   UserRole,
 } from '../types/railway.ts';
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+const apiFetch = (path: string, options?: RequestInit) =>
+  fetch(`${API_BASE_URL}${path}`, options);
+
 export interface TrackVisionState {
   trains: Train[];
   stations: Station[];
@@ -57,6 +62,7 @@ export function useTrackVision() {
     activeEvents: [],
     lastTick: new Date().toISOString(),
   });
+
   const [networkRisk, setNetworkRisk] = useState<NetworkRiskSummary>({
     affectedTrainsCount: 0,
     affectedStationsCount: 0,
@@ -65,6 +71,7 @@ export function useTrackVision() {
     connectionRisksCount: 0,
     overallRiskLevel: 'LOW',
   });
+
   const [selectedTrainId, setSelectedTrainId] = useState<string | null>('12951');
   const [selectedStationId, setSelectedStationId] = useState<string | null>('CNB');
   const [activeRole, setActiveRole] = useState<UserRole>('CONTROL_ROOM');
@@ -72,25 +79,27 @@ export function useTrackVision() {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toISOString());
   const [isSimulatingIntervention, setIsSimulatingIntervention] = useState(false);
-  const [lastInterventionOutcome, setLastInterventionOutcome] = useState<InterventionOutcome | null>(null);
+  const [lastInterventionOutcome, setLastInterventionOutcome] =
+    useState<InterventionOutcome | null>(null);
   const [modelMetrics, setModelMetrics] = useState<ModelMetricsSummary | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch initial REST data
   const fetchAllData = useCallback(async () => {
     try {
       const [trainsRes, stationsRes, networkRes, alertsRes, metricsRes] = await Promise.all([
-        fetch('/api/trains'),
-        fetch('/api/stations'),
-        fetch('/api/network'),
-        fetch('/api/alerts'),
-        fetch('/api/analytics/model'),
+        apiFetch('/api/trains'),
+        apiFetch('/api/stations'),
+        apiFetch('/api/network'),
+        apiFetch('/api/alerts'),
+        apiFetch('/api/analytics/model'),
       ]);
 
       if (trainsRes.ok) setTrains(await trainsRes.json());
       if (stationsRes.ok) setStations(await stationsRes.json());
+
       if (networkRes.ok) {
         const net = await networkRes.json();
         setSections(net.sections || []);
@@ -98,10 +107,11 @@ export function useTrackVision() {
         setPropagationNodes(net.propagation || []);
         setNetworkRisk(net.riskSummary || networkRisk);
       }
+
       if (alertsRes.ok) setAlerts(await alertsRes.json());
       if (metricsRes.ok) setModelMetrics(await metricsRes.json());
 
-      const connRes = await fetch('/api/trains/12951/connections');
+      const connRes = await apiFetch('/api/trains/12951/connections');
       if (connRes.ok) setPassengerConnections(await connRes.json());
 
       setLastUpdated(new Date().toISOString());
@@ -115,9 +125,11 @@ export function useTrackVision() {
     fetchAllData();
 
     let isMounted = true;
+
     function connectWs() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const wsUrl = API_BASE_URL
+        ? `${API_BASE_URL.replace(/^http/, 'ws')}/ws`
+        : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -130,8 +142,10 @@ export function useTrackVision() {
         ws.onmessage = (evt) => {
           try {
             const payload = JSON.parse(evt.data);
+
             if (payload.type === 'simulation.snapshot' || payload.type === 'simulation.reset') {
               const snap = payload.data;
+
               setTrains(snap.trains);
               setStations(snap.stations);
               setSections(snap.sections);
@@ -145,15 +159,18 @@ export function useTrackVision() {
             } else if (payload.type === 'train.position.updated') {
               // Update train lat/lng positions smoothly
               const updatedList = payload.data.trains;
+
               setTrains((prev) =>
                 prev.map((t) => {
                   const match = updatedList.find((u: { id: string }) => u.id === t.id);
                   return match ? { ...t, ...match } : t;
-                })
+                }),
               );
+
               setLastUpdated(new Date().toISOString());
             } else if (payload.type === 'simulation.event.injected') {
               const snap = payload.data;
+
               setTrains(snap.trains);
               setStations(snap.stations);
               setSections(snap.sections);
@@ -200,32 +217,54 @@ export function useTrackVision() {
 
     return () => {
       isMounted = false;
-      if (wsRef.current) wsRef.current.close();
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+
       clearInterval(pollInterval);
     };
   }, [fetchAllData]);
 
   // Simulation Actions
   const toggleSimulation = async () => {
-    const endpoint = simulationState.isRunning ? '/api/simulation/pause' : '/api/simulation/start';
-    await fetch(endpoint, { method: 'POST' });
-    setSimulationState((prev) => ({ ...prev, isRunning: !prev.isRunning }));
+    const endpoint = simulationState.isRunning
+      ? '/api/simulation/pause'
+      : '/api/simulation/start';
+
+    await apiFetch(endpoint, { method: 'POST' });
+
+    setSimulationState((prev) => ({
+      ...prev,
+      isRunning: !prev.isRunning,
+    }));
   };
 
   const setSimulationSpeed = async (speed: 1 | 2 | 5) => {
-    await fetch('/api/simulation/speed', {
+    await apiFetch('/api/simulation/speed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ speed }),
     });
-    setSimulationState((prev) => ({ ...prev, speed }));
+
+    setSimulationState((prev) => ({
+      ...prev,
+      speed,
+    }));
   };
 
   const resetDemo = async () => {
-    const res = await fetch('/api/simulation/reset', { method: 'POST' });
+    const res = await apiFetch('/api/simulation/reset', {
+      method: 'POST',
+    });
+
     if (res.ok) {
       const { snapshot } = await res.json();
+
       setTrains(snapshot.trains);
       setStations(snapshot.stations);
       setSections(snapshot.sections);
@@ -241,13 +280,15 @@ export function useTrackVision() {
   };
 
   const injectEvent = async (eventName: string) => {
-    const res = await fetch('/api/simulation/events', {
+    const res = await apiFetch('/api/simulation/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event: eventName }),
     });
+
     if (res.ok) {
       const { snapshot } = await res.json();
+
       setTrains(snapshot.trains);
       setStations(snapshot.stations);
       setSections(snapshot.sections);
@@ -261,35 +302,65 @@ export function useTrackVision() {
   };
 
   const acknowledgeAlert = async (alertId: string) => {
-    await fetch(`/api/alerts/${alertId}/acknowledge`, { method: 'POST' });
-    setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, status: 'ACKNOWLEDGED' } : a)));
+    await apiFetch(`/api/alerts/${alertId}/acknowledge`, {
+      method: 'POST',
+    });
+
+    setAlerts((prev) =>
+      prev.map((a) =>
+        a.id === alertId
+          ? { ...a, status: 'ACKNOWLEDGED' }
+          : a,
+      ),
+    );
   };
 
-  const runInterventionSimulation = async (req: InterventionRequest): Promise<InterventionOutcome | null> => {
+  const runInterventionSimulation = async (
+    req: InterventionRequest,
+  ): Promise<InterventionOutcome | null> => {
     setIsSimulatingIntervention(true);
+
     try {
-      const res = await fetch('/api/interventions/simulate', {
+      const res = await apiFetch('/api/interventions/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(req),
       });
+
       if (res.ok) {
         const outcome = await res.json();
+
         setLastInterventionOutcome(outcome);
+
         // Refresh local data to show the resolved conflict
         fetchAllData();
+
         return outcome;
       }
     } finally {
       setIsSimulatingIntervention(false);
     }
+
     return null;
   };
 
-  const selectedTrain = trains.find((t) => t.id === selectedTrainId || t.number === selectedTrainId) || null;
-  const selectedStation = stations.find((s) => s.id === selectedStationId || s.code === selectedStationId) || null;
+  const selectedTrain =
+    trains.find(
+      (t) => t.id === selectedTrainId || t.number === selectedTrainId,
+    ) || null;
 
-  const triggerScenarioPreset = async (presetKey: 'SCENARIO_1_CLEAR' | 'SCENARIO_2_SIGNAL' | 'SCENARIO_3_FOG' | 'SCENARIO_4_PEAK') => {
+  const selectedStation =
+    stations.find(
+      (s) => s.id === selectedStationId || s.code === selectedStationId,
+    ) || null;
+
+  const triggerScenarioPreset = async (
+    presetKey:
+      | 'SCENARIO_1_CLEAR'
+      | 'SCENARIO_2_SIGNAL'
+      | 'SCENARIO_3_FOG'
+      | 'SCENARIO_4_PEAK',
+  ) => {
     if (presetKey === 'SCENARIO_1_CLEAR') {
       await resetDemo();
     } else if (presetKey === 'SCENARIO_2_SIGNAL') {
@@ -303,7 +374,13 @@ export function useTrackVision() {
 
   const activeEventsList = (simulationState.activeEvents || []).map((e, idx) => ({
     id: `evt-${idx}`,
-    type: (e.includes('SIGNAL') ? 'SIGNAL_FAILURE' : e.includes('RAIN') ? 'WEATHER_FOG' : 'FREIGHT_BLOCK') as any,
+    type: (
+      e.includes('SIGNAL')
+        ? 'SIGNAL_FAILURE'
+        : e.includes('RAIN')
+          ? 'WEATHER_FOG'
+          : 'FREIGHT_BLOCK'
+    ) as any,
     targetTrainNumber: '12951',
     targetStationId: 'ETW',
     impactDelayMinutes: 8,
@@ -343,7 +420,8 @@ export function useTrackVision() {
     resetDemo,
     resetSimulation: resetDemo,
     injectEvent,
-    injectDisruptionEvent: (e: any) => injectEvent(e.type || 'EVENT_SIGNAL_RESTRICTION'),
+    injectDisruptionEvent: (e: any) =>
+      injectEvent(e.type || 'EVENT_SIGNAL_RESTRICTION'),
     triggerScenarioPreset,
     acknowledgeAlert,
     runInterventionSimulation,
