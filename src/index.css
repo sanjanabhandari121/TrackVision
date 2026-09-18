@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --rail-navy-deep: #0f172a;
+    --rail-navy: #1e293b;
+    --rail-maroon: #8B1E2D;
+    --rail-maroon-dark: #641522;
+    --rail-cream: #F4EBDD;
+    --rail-offwhite: #F8FAFC;
+    --rail-green: #16a34a;
+    --rail-amber: #d97706;
+    --rail-red: #dc2626;
+    --rail-blue: #2563eb;
+  }
+
+  body {
+    font-family: 'Inter', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #F1F5F9;
+    color: #0F172A;
+  }
+}
+
+/* Custom compact scrollbars for operational data density */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Leaflet railway map customization */
+.leaflet-container {
+  background: #e2e8f0 !important;
+  font-family: inherit;
+}
+
+.station-marker, .train-marker, .conflict-marker {
+  background: transparent;
+  border: none;
+}

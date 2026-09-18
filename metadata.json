@@ -1,0 +1,6 @@
+{
+  "name": "TrackVision — Railway ETA & Operational Decision-Support Platform",
+  "description": "Dynamic forecast of Expected Time of Arrival (ETA), delay propagation, platform conflict detection, and what-if intervention simulation on the Delhi–Prayagraj railway corridor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
