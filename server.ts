@@ -6,7 +6,6 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { CORRIDOR_SECTIONS, CORRIDOR_STATIONS } from './server/data/corridor.ts';
 import {
@@ -15,8 +14,7 @@ import {
 } from './server/ml/engine.ts';
 import { simulationManager } from './server/simulation.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = process.cwd();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
